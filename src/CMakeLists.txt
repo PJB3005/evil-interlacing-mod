@@ -1,0 +1,10 @@
+target_sources(
+        evil_interlacing_mod
+        PRIVATE
+        config.cpp
+        config.hpp
+        mod.hpp
+        mod_helpers.hpp
+        pipelines.cpp
+        pipelines.hpp
+        services.cpp)

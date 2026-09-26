@@ -1,0 +1,8 @@
+{
+  "id": "systems.slugcat.interlacing",
+  "name": "Evil Interlacing Mod",
+  "version": "@PROJECT_VERSION@",
+  "author": "PJB3005",
+  "description": "Adds an interlacing filter to the game",
+  "icon": "res/interlaceon.png"
+}
