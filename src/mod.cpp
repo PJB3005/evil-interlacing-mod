@@ -27,10 +27,9 @@ struct DrawPayload {
 };
 
 struct CopyPayload {
-    wgpu::TextureView color;
+    wgpu::Texture color;
     uint32_t width;
     uint32_t height;
-    GfxRange uniformRange;
 };
 
 GfxDrawTypeHandle gDrawTypeHandle;
@@ -39,6 +38,7 @@ GfxComputeTypeHandle gCopyTypeHandle;
 bool gIsEvenField;
 uint32_t gLastWidth;
 uint32_t gLastHeight;
+wgpu::TextureFormat gLastFormat;
 wgpu::Texture gLastField;
 wgpu::TextureView gLastFieldView;
 
@@ -87,10 +87,9 @@ void StageHook(ModContext *, const GfxStageContext *, void *) {
 
     if (actuallyCopy) {
         auto *payload2 = new CopyPayload{
-            resolved.color,
+            resolved.colorTexture,
             resolved.width,
-            resolved.height,
-            range,
+            resolved.height
         };
         CheckResult(svc_gfx->push_compute(mod_ctx, gCopyTypeHandle, &payload2, sizeof(payload2)),
                     "push_compute");
@@ -173,13 +172,13 @@ void CopyHook(ModContext *,
     std::unique_ptr<CopyPayload const> const payloadData(
         *static_cast<CopyPayload const *const *>(payload));
 
-    if (gLastWidth != payloadData->width || gLastHeight != payloadData->height) {
+    if (gLastWidth != payloadData->width || gLastHeight != payloadData->height || gLastFormat != payloadData->color.GetFormat()) {
         wgpu::TextureDescriptor const descriptor{
             .label = "gLastField"sv,
-            .usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::RenderAttachment,
+            .usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst,
             .dimension = wgpu::TextureDimension::e2D,
             .size = {payloadData->width, payloadData->height},
-            .format = pipelines::kBlitTargetFormat,
+            .format = payloadData->color.GetFormat(),
         };
 
         gLastField = gDevice.CreateTexture(&descriptor);
@@ -188,48 +187,26 @@ void CopyHook(ModContext *,
 
     wgpu::CommandEncoder const encoder(compute_ctx->encoder);
 
-    wgpu::RenderPassColorAttachment const attachment{
-        .view = gLastFieldView,
-        .loadOp = wgpu::LoadOp::Clear, // TODO: Move to undefined when it's allowed
-        .storeOp = wgpu::StoreOp::Store,
+    wgpu::TexelCopyTextureInfo const srcInfo{
+        .texture = payloadData->color,
+        .mipLevel = 0,
+        .origin = {},
+        .aspect = wgpu::TextureAspect::All,
     };
 
-    wgpu::RenderPassDescriptor const passDescriptor{
-        .label = "Interlace copy pass"sv,
-        .colorAttachmentCount = 1,
-        .colorAttachments = &attachment,
+    wgpu::TexelCopyTextureInfo const dstInfo{
+        .texture = gLastField,
+        .mipLevel = 0,
+        .origin = {},
+        .aspect = wgpu::TextureAspect::All,
     };
 
-    auto const passEncoder = encoder.BeginRenderPass(&passDescriptor);
-    passEncoder.SetPipeline(pipelines::gBlitPipeline);
-
-    wgpu::BindGroupEntry const entries[]{
-        {
-            .binding = 0,
-            .textureView = payloadData->color,
-        },
-        {
-            .binding = 1,
-            .sampler = pipelines::gSampler,
-        },
-        {
-            .binding = 2,
-            .buffer = compute_ctx->uniform_buffer,
-            .offset = payloadData->uniformRange.offset,
-            .size = payloadData->uniformRange.size,
-        },
+    wgpu::Extent3D const extent{
+        .width = payloadData->width,
+        .height = payloadData->height,
     };
 
-    wgpu::BindGroupDescriptor const bgDesc{
-        .layout = pipelines::gBlitBindGroupLayout,
-        .entryCount = std::size(entries),
-        .entries = entries,
-    };
-
-    auto const bg = gDevice.CreateBindGroup(&bgDesc);
-    passEncoder.SetBindGroup(0, bg);
-    passEncoder.Draw(pipelines::kVertexDrawCount);
-    passEncoder.End();
+    encoder.CopyTextureToTexture(&srcInfo, &dstInfo, &extent);
 }
 
 constexpr GfxStageHookDesc gHookDesc = {

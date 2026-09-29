@@ -12,8 +12,6 @@ namespace slugcat::interlace::pipelines {
 
 wgpu::Sampler gSampler;
 wgpu::BindGroupLayout gBindGroupLayout;
-wgpu::BindGroupLayout gBlitBindGroupLayout;
-wgpu::RenderPipeline gBlitPipeline;
 
 namespace {
 
@@ -21,7 +19,6 @@ using namespace std::string_view_literals;
 
 wgpu::ShaderModule gVertexModule;
 wgpu::ShaderModule gInterlaceModule;
-wgpu::ShaderModule gBlitModule;
 wgpu::PipelineLayout gPipelineLayout;
 
 wgpu::TextureFormat gLastColorFormat;
@@ -114,7 +111,6 @@ wgpu::RenderPipeline const &InterlacePipelineFor(wgpu::TextureFormat const color
 void Init() {
     gVertexModule = CompileShaderModule("epic_vertex.wgsl");
     gInterlaceModule = CompileShaderModule("interlace.wgsl");
-    gBlitModule = CompileShaderModule("blit.wgsl");
 
     constexpr static wgpu::BindGroupLayoutEntry entries[]{
         {
@@ -175,31 +171,6 @@ void Init() {
     };
 
     gSampler = gDevice.CreateSampler(&samplerDesc);
-
-    constexpr static wgpu::ColorTargetState colorTargets[]{
-        {
-            .format = kBlitTargetFormat,
-        },
-    };
-
-    wgpu::FragmentState const fragmentState{
-        .module = gBlitModule,
-        .targetCount = std::size(colorTargets),
-        .targets = colorTargets,
-    };
-
-    wgpu::RenderPipelineDescriptor const blitDesc{
-        .label = "Blit pipeline"sv,
-        .vertex = {.module = gVertexModule, .entryPoint = "vs_main"sv},
-        .primitive =
-            {
-                .topology = wgpu::PrimitiveTopology::TriangleList,
-            },
-        .fragment = &fragmentState,
-    };
-
-    gBlitPipeline = gDevice.CreateRenderPipeline(&blitDesc);
-    gBlitBindGroupLayout = gBlitPipeline.GetBindGroupLayout(0);
 }
 
 } // namespace slugcat::interlace::pipelines
